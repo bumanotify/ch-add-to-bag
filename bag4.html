@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Add to bag</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+         background:#0b0b0c; color:#e8e8ea;
+         font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  .box { text-align:center; padding:32px; max-width:420px; }
+  .spin { width:28px; height:28px; margin:0 auto 18px; border-radius:50%;
+          border:2px solid #333; border-top-color:#e8e8ea; animation:s .8s linear infinite; }
+  @keyframes s { to { transform:rotate(360deg) } }
+  button { font:inherit; font-weight:600; letter-spacing:.04em; cursor:pointer;
+           padding:16px 34px; border-radius:10px; border:1px solid #3a3a3f;
+           background:#e8e8ea; color:#0b0b0c; }
+  button:active { transform:translateY(1px) }
+  a { color:#9ecbff; }
+  .small { font-size:13px; opacity:.65; margin-top:14px; }
+  .hide { display:none }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spin hide" id="spin"></div>
+  <div id="msg">Chrome Hearts</div>
+  <div style="margin-top:18px"><button id="go" class="hide">ADD TO BAG</button></div>
+  <div class="small" id="note"></div>
+  <div class="small"><a href="https://www.chromehearts.com/cart">Cart</a></div>
+</div>
+
+<script>
+(function () {
+  var STORE = "https://www.chromehearts.com/on/demandware.store/Sites-ChromeHearts-Site/en_US/Cart-AddProduct";
+  var CART  = "https://www.chromehearts.com/cart";
+
+  var params = new URLSearchParams(location.search);
+  var pid = (params.get("pid") || "").trim();
+  var qty = (params.get("quantity") || "1").trim();
+  var master = (params.get("m") || "").trim();     // master product id
+  var color = (params.get("c") || "").trim();      // attribute code
+  var size = (params.get("s") || "").trim();       // attribute code
+
+  function productUrl() {
+    if (!master) return "";
+    var u = "https://www.chromehearts.com/on/demandware.store/Sites-ChromeHearts-Site/en_US/Product-Show?pid="
+          + encodeURIComponent(master);
+    if (color) u += "&dwvar_" + master + "_color=" + encodeURIComponent(color);
+    if (size)  u += "&dwvar_" + master + "_size=" + encodeURIComponent(size);
+    return u + "&quantity=" + encodeURIComponent(qty);
+  }
+
+  // same flow on every platform: the popup is the only first-party POST a
+  // browser will let us make from a link. iOS opens it as a tab instead of a
+  // 1x1 window, which still works. If the popup is blocked entirely we fall
+  // back to the preselected product page.
+  var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  var msg = document.getElementById("msg");
+  var note = document.getElementById("note");
+  var button = document.getElementById("go");
+  var spin = document.getElementById("spin");
+
+  if (!/^[A-Za-z0-9_-]{4,40}$/.test(pid)) {
+    msg.textContent = "Missing or invalid product id.";
+    return;
+  }
+
+  var form = document.createElement("form");
+  form.method = "POST";
+  form.action = STORE;
+  form.acceptCharset = "UTF-8";
+
+  function field(name, value) {
+    var input = document.createElement("input");
+    input.type = "hidden"; input.name = name; input.value = value;
+    form.appendChild(input);
+  }
+  field("pid", pid);
+  field("quantity", qty);
+  document.body.appendChild(form);
+
+  var warmTimer = null;
+  var finishTimer = null;
+
+  function added(w) {
+    msg.textContent = "Added to bag";
+    note.textContent = "Taking you to the cart…";
+    spin.classList.remove("hide");
+    // POST once the session is warm, then tear the helper window down.
+    // it is positioned off-screen at 1x1, so none of this is visible.
+    warmTimer = setTimeout(function () { try { form.submit(); } catch (e) {} }, 1200);
+    finishTimer = setTimeout(function () {
+      try { if (w && !w.closed) w.close(); } catch (e) {}
+      location.replace(CART);
+    }, 2600);
+  }
+
+  // A cross-site POST from an iframe only works when the browser allows
+  // third-party cookies (Brave/Safari block them, and then the request has no
+  // Chrome Hearts session and the site answers 500). A popup is a top-level
+  // navigation, so it is first-party and works everywhere — but browsers only
+  // allow it with a user gesture, hence the button.
+  function addWithPopup() {
+    // open the popup ON chromehearts.com first: SFCC answers 500 to a POST that
+    // arrives without a session cookie, and a top-level window is the only place
+    // the browser will still set first-party cookies when 3PC is blocked.
+    var features = "popup=yes,width=1,height=1,left=-3200,top=-3200,resizable=no,scrollbars=no,toolbar=no,menubar=no";
+    var w = window.open("https://www.chromehearts.com/", "ch_sink", features);
+    if (!w) return false;
+    form.target = "ch_sink";
+    try { w.blur(); window.focus(); } catch (e) {}
+    added(w);
+    return true;
+  }
+
+  button.addEventListener("click", function () {
+    if (!addWithPopup()) {
+      // popup blocked: fall back to the product page (size preselected) or,
+      // if we have nothing better, a same-tab POST (lands on SFCC's JSON)
+      var pdp = productUrl();
+      if (pdp) {
+        location.replace(pdp);
+      } else {
+        form.target = "_self";
+        form.submit();
+      }
+    }
+  });
+
+  // if the browser lets us open the popup without a click, do it in one step
+  if (!addWithPopup()) {
+    msg.textContent = "Add this to your bag?";
+    note.textContent = "Takes you to the Chrome Hearts cart with this size in it.";
+    button.classList.remove("hide");
+  }
+})();
+</script>
+</body>
+</html>
